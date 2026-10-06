@@ -1,23 +1,51 @@
-import pyttsx3
 import datetime
-import speech_recognition as sr
-import wikipedia
-import webbrowser as wb
 import os
 import random
+import re
+import subprocess
+import sys
+import webbrowser as wb
+from typing import Optional, Tuple
+from urllib.parse import quote_plus
+
+import pyttsx3
+import speech_recognition as sr
+import wikipedia
 import pyautogui
 import pyjokes
 
-engine = pyttsx3.init()
-voices = engine.getProperty('voices')
-engine.setProperty('voice', voices[1].id)  
-engine.setProperty('rate', 150)
-engine.setProperty('volume', 1)
+from brain import Brain
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+NAME_FILE = os.path.join(BASE_DIR, "assistant_name.txt")
+NOTES_FILE = os.path.join(BASE_DIR, "data.txt")
+
+_engine = None
+
+
+def get_engine():
+    """Initialises the text-to-speech engine on first use."""
+    global _engine
+    if _engine is None:
+        _engine = pyttsx3.init()
+        voices = _engine.getProperty('voices')
+        # Prefer the second (usually female) voice, but not every system has one.
+        if len(voices) > 1:
+            _engine.setProperty('voice', voices[1].id)
+        _engine.setProperty('rate', 150)
+        _engine.setProperty('volume', 1)
+    return _engine
 
 
 def speak(audio) -> None:
+    engine = get_engine()
     engine.say(audio)
     engine.runAndWait()
+
+
+def has_word(query: str, *words: str) -> bool:
+    """Returns True if any of the given words/phrases appear as whole words in the query."""
+    return any(re.search(rf"\b{re.escape(word)}\b", query) for word in words)
 
 
 def time() -> None:
@@ -43,34 +71,49 @@ def wishme() -> None:
 
     hour = datetime.datetime.now().hour
     if 4 <= hour < 12:
-        speak("Good morning!")
-        print("Good morning!")
+        greeting = "Good morning!"
     elif 12 <= hour < 16:
-        speak("Good afternoon!")
-        print("Good afternoon!")
-    elif 16 <= hour < 24:
-        speak("Good evening!")
-        print("Good evening!")
+        greeting = "Good afternoon!"
     else:
-        speak("Good night, see you tomorrow.")
+        greeting = "Good evening!"
+    speak(greeting)
+    print(greeting)
 
     assistant_name = load_name()
     speak(f"{assistant_name} at your service. Please tell me how may I assist you.")
     print(f"{assistant_name} at your service. Please tell me how may I assist you.")
 
 
-def screenshot() -> None:
-    """Takes a screenshot and saves it."""
+def screenshot(name: Optional[str] = None) -> None:
+    """Takes a screenshot and saves it, optionally with a custom filename."""
+    pictures_dir = os.path.join(os.path.expanduser("~"), "Pictures")
+    os.makedirs(pictures_dir, exist_ok=True)
+
+    if name:
+        name = re.sub(r"[^\w\- ]", "", name).strip().replace(" ", "_")
+    if not name:
+        name = datetime.datetime.now().strftime("screenshot_%Y%m%d_%H%M%S")
+
+    img_path = os.path.join(pictures_dir, f"{name}.png")
     img = pyautogui.screenshot()
-    img_path = os.path.expanduser("~\\Pictures\\screenshot.png")
     img.save(img_path)
-    speak(f"Screenshot saved as {img_path}.")
+    speak(f"Screenshot saved as {name}.")
     print(f"Screenshot saved as {img_path}.")
 
-def takecommand() -> str:
-    """Takes microphone input from the user and returns it as text."""
+
+def takecommand() -> Optional[str]:
+    """Takes microphone input from the user and returns it as text.
+
+    Falls back to keyboard input if no microphone (or PyAudio) is available.
+    """
     r = sr.Recognizer()
-    with sr.Microphone() as source:
+    try:
+        source = sr.Microphone()
+    except (OSError, AttributeError):
+        query = input("Type your command: ").strip()
+        return query.lower() or None
+
+    with source:
         print("Listening...")
         r.pause_threshold = 1
 
@@ -96,45 +139,66 @@ def takecommand() -> str:
         print(f"Error: {e}")
         return None
 
+
+def open_file(path: str) -> None:
+    """Opens a file with the default application on any OS."""
+    if sys.platform.startswith("win"):
+        os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
 def play_music(song_name=None) -> None:
     """Plays music from the user's Music directory."""
-    song_dir = os.path.expanduser("~\\Music")
-    songs = os.listdir(song_dir)
+    song_dir = os.path.join(os.path.expanduser("~"), "Music")
+    try:
+        songs = os.listdir(song_dir)
+    except FileNotFoundError:
+        speak("I couldn't find your Music folder.")
+        print(f"Music folder not found: {song_dir}")
+        return
 
     if song_name:
         songs = [song for song in songs if song_name.lower() in song.lower()]
 
     if songs:
         song = random.choice(songs)
-        os.startfile(os.path.join(song_dir, song))
+        open_file(os.path.join(song_dir, song))
         speak(f"Playing {song}.")
         print(f"Playing {song}.")
     else:
         speak("No song found.")
         print("No song found.")
 
+
 def set_name() -> None:
     """Sets a new name for the assistant."""
     speak("What would you like to name me?")
     name = takecommand()
     if name:
-        with open("assistant_name.txt", "w") as file:
+        with open(NAME_FILE, "w") as file:
             file.write(name)
         speak(f"Alright, I will be called {name} from now on.")
     else:
         speak("Sorry, I couldn't catch that.")
 
+
 def load_name() -> str:
     """Loads the assistant's name from a file, or uses a default name."""
     try:
-        with open("assistant_name.txt", "r") as file:
-            return file.read().strip()
+        with open(NAME_FILE, "r") as file:
+            return file.read().strip() or "Jarvis"
     except FileNotFoundError:
         return "Jarvis"  # Default name
 
 
 def search_wikipedia(query):
     """Searches Wikipedia and returns a summary."""
+    if not query:
+        speak("What should I search on Wikipedia?")
+        return
     try:
         speak("Searching Wikipedia...")
         result = wikipedia.summary(query, sentences=2)
@@ -146,56 +210,173 @@ def search_wikipedia(query):
         speak("I couldn't find anything on Wikipedia.")
 
 
+def search_google(query) -> None:
+    """Opens a Google search for the query in the default browser."""
+    if not query:
+        wb.open("https://www.google.com")
+        return
+    speak(f"Searching Google for {query}.")
+    wb.open(f"https://www.google.com/search?q={quote_plus(query)}")
+
+
+def remember(note) -> None:
+    """Appends a note to the notes file."""
+    if not note:
+        speak("What should I remember?")
+        note = takecommand()
+    if not note:
+        speak("Sorry, I couldn't catch that.")
+        return
+    with open(NOTES_FILE, "a") as file:
+        file.write(note.strip() + "\n")
+    speak(f"I'll remember that {note}.")
+
+
+def recall() -> None:
+    """Reads back saved notes."""
+    try:
+        with open(NOTES_FILE, "r") as file:
+            notes = file.read().strip()
+    except FileNotFoundError:
+        notes = ""
+    if notes:
+        speak(f"You asked me to remember: {notes}")
+        print(notes)
+    else:
+        speak("You haven't asked me to remember anything.")
+
+
+def confirm(action: str) -> bool:
+    """Asks the user to confirm a destructive action."""
+    speak(f"Are you sure you want to {action}? Say yes to confirm.")
+    answer = takecommand()
+    return bool(answer) and has_word(answer, "yes", "yeah", "confirm")
+
+
+def power_command(restart: bool) -> None:
+    if sys.platform.startswith("win"):
+        os.system("shutdown /r /f /t 1" if restart else "shutdown /s /f /t 1")
+    else:
+        os.system("shutdown -r now" if restart else "shutdown -h now")
+
+
+def parse_query(query: str) -> Tuple[Optional[str], str]:
+    """Maps a query to (intent, argument) using keyword matching."""
+    if has_word(query, "offline", "exit", "quit", "goodbye"):
+        return "exit", ""
+    if "wikipedia" in query:
+        return "wikipedia", query.replace("wikipedia", "").replace("search", "").strip()
+    if has_word(query, "search google", "google search", "search for"):
+        search = re.sub(r"\b(search google for|search google|google search for|google search|search for)\b", "", query)
+        return "google_search", search.strip()
+    if "play music" in query:
+        return "play_music", query.replace("play music", "").strip()
+    if "open youtube" in query:
+        return "open_website", "https://www.youtube.com"
+    if "open google" in query:
+        return "open_website", "https://www.google.com"
+    if "change your name" in query:
+        return "change_name", ""
+    if "screenshot" in query:
+        return "screenshot", query.split(" named ", 1)[1] if " named " in query else ""
+    if has_word(query, "joke"):
+        return "joke", ""
+    if "do you remember" in query or "what did i ask you to remember" in query:
+        return "recall", ""
+    if "remember that" in query:
+        return "remember", query.split("remember that", 1)[1].strip()
+    if has_word(query, "time"):
+        return "time", ""
+    if has_word(query, "date"):
+        return "date", ""
+    if has_word(query, "shutdown", "shut down"):
+        return "shutdown", ""
+    if has_word(query, "restart"):
+        return "restart", ""
+    return None, ""
+
+
+def run_intent(intent: Optional[str], argument: str = "") -> bool:
+    """Runs a command. Returns False when the assistant should stop."""
+    if intent == "exit":
+        speak("Going offline. Have a good day!")
+        return False
+
+    elif intent == "wikipedia":
+        search_wikipedia(argument)
+
+    elif intent == "google_search":
+        search_google(argument)
+
+    elif intent == "open_website":
+        url = argument if argument.startswith(("http://", "https://")) else f"https://{argument}"
+        wb.open(url)
+
+    elif intent == "play_music":
+        play_music(argument)
+
+    elif intent == "change_name":
+        set_name()
+
+    elif intent == "screenshot":
+        screenshot(argument or None)
+
+    elif intent == "joke":
+        joke = pyjokes.get_joke()
+        speak(joke)
+        print(joke)
+
+    elif intent == "recall":
+        recall()
+
+    elif intent == "remember":
+        remember(argument)
+
+    elif intent == "time":
+        time()
+
+    elif intent == "date":
+        date()
+
+    elif intent == "shutdown":
+        if confirm("shut down the system"):
+            speak("Shutting down the system, goodbye!")
+            power_command(restart=False)
+            return False
+        speak("Shutdown cancelled.")
+
+    elif intent == "restart":
+        if confirm("restart the system"):
+            speak("Restarting the system, please wait!")
+            power_command(restart=True)
+            return False
+        speak("Restart cancelled.")
+
+    return True
+
+
+def handle_query(query: str, brain: Optional[Brain] = None) -> bool:
+    """Understands and runs a query. Returns False when the assistant should stop."""
+    command = brain.interpret(query) if brain else None
+    if command is None:
+        return run_intent(*parse_query(query))
+
+    reply = command.get("reply", "").strip()
+    if reply:
+        speak(reply)
+        print(reply)
+    if command["intent"] == "chat":
+        return True
+    return run_intent(command["intent"], command.get("argument", "").strip())
+
+
 if __name__ == "__main__":
     wishme()
+    brain = Brain(load_name())
 
     while True:
         query = takecommand()
         if not query:
             continue
-
-        if "time" in query:
-            time()
-            
-        elif "date" in query:
-            date()
-
-        elif "wikipedia" in query:
-            query = query.replace("wikipedia", "").strip()
-            search_wikipedia(query)
-
-        elif "play music" in query:
-            song_name = query.replace("play music", "").strip()
-            play_music(song_name)
-
-        elif "open youtube" in query:
-            wb.open("youtube.com")
-            
-        elif "open google" in query:
-            wb.open("google.com")
-
-        elif "change your name" in query:
-            set_name()
-
-        elif "screenshot" in query:
-            screenshot()
-            speak("I've taken screenshot, please check it")
-
-        elif "tell me a joke" in query:
-            joke = pyjokes.get_joke()
-            speak(joke)
-            print(joke)
-
-        elif "shutdown" in query:
-            speak("Shutting down the system, goodbye!")
-            os.system("shutdown /s /f /t 1")
-            break
-            
-        elif "restart" in query:
-            speak("Restarting the system, please wait!")
-            os.system("shutdown /r /f /t 1")
-            break
-            
-        elif "offline" in query or "exit" in query:
-            speak("Going offline. Have a good day!")
+        if not handle_query(query, brain):
             break

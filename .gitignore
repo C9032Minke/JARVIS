@@ -1,2 +1,5 @@
 .venv
 /.idea
+__pycache__/
+*.pyc
+Jarvis/assistant_name.txt
