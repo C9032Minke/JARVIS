@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 import webbrowser as wb
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import quote_plus
 
 import pyttsx3
@@ -13,6 +13,8 @@ import speech_recognition as sr
 import wikipedia
 import pyautogui
 import pyjokes
+
+from brain import Brain
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 NAME_FILE = os.path.join(BASE_DIR, "assistant_name.txt")
@@ -258,60 +260,92 @@ def power_command(restart: bool) -> None:
         os.system("shutdown -r now" if restart else "shutdown -h now")
 
 
-def handle_query(query: str) -> bool:
-    """Runs the command for a query. Returns False when the assistant should stop."""
+def parse_query(query: str) -> Tuple[Optional[str], str]:
+    """Maps a query to (intent, argument) using keyword matching."""
     if has_word(query, "offline", "exit", "quit", "goodbye"):
+        return "exit", ""
+    if "wikipedia" in query:
+        return "wikipedia", query.replace("wikipedia", "").replace("search", "").strip()
+    if has_word(query, "search google", "google search", "search for"):
+        search = re.sub(r"\b(search google for|search google|google search for|google search|search for)\b", "", query)
+        return "google_search", search.strip()
+    if "play music" in query:
+        return "play_music", query.replace("play music", "").strip()
+    if "open youtube" in query:
+        return "open_website", "https://www.youtube.com"
+    if "open google" in query:
+        return "open_website", "https://www.google.com"
+    if "change your name" in query:
+        return "change_name", ""
+    if "screenshot" in query:
+        return "screenshot", query.split(" named ", 1)[1] if " named " in query else ""
+    if has_word(query, "joke"):
+        return "joke", ""
+    if "do you remember" in query or "what did i ask you to remember" in query:
+        return "recall", ""
+    if "remember that" in query:
+        return "remember", query.split("remember that", 1)[1].strip()
+    if has_word(query, "time"):
+        return "time", ""
+    if has_word(query, "date"):
+        return "date", ""
+    if has_word(query, "shutdown", "shut down"):
+        return "shutdown", ""
+    if has_word(query, "restart"):
+        return "restart", ""
+    return None, ""
+
+
+def run_intent(intent: Optional[str], argument: str = "") -> bool:
+    """Runs a command. Returns False when the assistant should stop."""
+    if intent == "exit":
         speak("Going offline. Have a good day!")
         return False
 
-    elif "wikipedia" in query:
-        search_wikipedia(query.replace("wikipedia", "").replace("search", "").strip())
+    elif intent == "wikipedia":
+        search_wikipedia(argument)
 
-    elif has_word(query, "search google", "google search", "search for"):
-        search = re.sub(r"\b(search google for|search google|google search for|google search|search for)\b", "", query)
-        search_google(search.strip())
+    elif intent == "google_search":
+        search_google(argument)
 
-    elif "play music" in query:
-        play_music(query.replace("play music", "").strip())
+    elif intent == "open_website":
+        url = argument if argument.startswith(("http://", "https://")) else f"https://{argument}"
+        wb.open(url)
 
-    elif "open youtube" in query:
-        wb.open("https://www.youtube.com")
+    elif intent == "play_music":
+        play_music(argument)
 
-    elif "open google" in query:
-        wb.open("https://www.google.com")
-
-    elif "change your name" in query:
+    elif intent == "change_name":
         set_name()
 
-    elif "screenshot" in query:
-        name = query.split(" named ", 1)[1] if " named " in query else None
-        screenshot(name)
+    elif intent == "screenshot":
+        screenshot(argument or None)
 
-    elif has_word(query, "joke"):
+    elif intent == "joke":
         joke = pyjokes.get_joke()
         speak(joke)
         print(joke)
 
-    elif "do you remember" in query or "what did i ask you to remember" in query:
+    elif intent == "recall":
         recall()
 
-    elif "remember that" in query:
-        remember(query.split("remember that", 1)[1].strip())
+    elif intent == "remember":
+        remember(argument)
 
-    elif has_word(query, "time"):
+    elif intent == "time":
         time()
 
-    elif has_word(query, "date"):
+    elif intent == "date":
         date()
 
-    elif has_word(query, "shutdown", "shut down"):
+    elif intent == "shutdown":
         if confirm("shut down the system"):
             speak("Shutting down the system, goodbye!")
             power_command(restart=False)
             return False
         speak("Shutdown cancelled.")
 
-    elif has_word(query, "restart"):
+    elif intent == "restart":
         if confirm("restart the system"):
             speak("Restarting the system, please wait!")
             power_command(restart=True)
@@ -321,12 +355,28 @@ def handle_query(query: str) -> bool:
     return True
 
 
+def handle_query(query: str, brain: Optional[Brain] = None) -> bool:
+    """Understands and runs a query. Returns False when the assistant should stop."""
+    command = brain.interpret(query) if brain else None
+    if command is None:
+        return run_intent(*parse_query(query))
+
+    reply = command.get("reply", "").strip()
+    if reply:
+        speak(reply)
+        print(reply)
+    if command["intent"] == "chat":
+        return True
+    return run_intent(command["intent"], command.get("argument", "").strip())
+
+
 if __name__ == "__main__":
     wishme()
+    brain = Brain(load_name())
 
     while True:
         query = takecommand()
         if not query:
             continue
-        if not handle_query(query):
+        if not handle_query(query, brain):
             break

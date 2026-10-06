@@ -30,7 +30,32 @@ It can do a lot of cool things, some of them being:
 - Falls back to keyboard input when no microphone is available
 - Works on Windows, macOS and Linux
 
+## 📌Smarter Commands with Claude (optional)
+
+By default Jarvis matches keywords, so you have to say commands fairly precisely. If you give it an
+[Anthropic API key](https://console.anthropic.com/), Jarvis uses Claude to understand what you
+*mean* instead:
+
+- Say things naturally: *"could you look up who invented the telephone"*, *"is it going to rain today"*,
+  *"pull up github"*. Claude picks the right command for you.
+- Ask anything else (*"what's the capital of Australia?"*, *"how do I boil an egg?"*) and Jarvis answers out loud.
+- Jarvis remembers the last few exchanges, so follow-ups like *"how old is he?"* work.
+- Shutdown and restart still ask you to confirm.
+
+To turn it on, set your key before running Jarvis:
+
+```bash
+export ANTHROPIC_API_KEY=your-key-here      # macOS/Linux
+set ANTHROPIC_API_KEY=your-key-here         # Windows (cmd)
+```
+
+Without a key, or when you're offline, Jarvis automatically falls back to keyword matching. Set
+`JARVIS_AI=0` to force keyword mode, or `JARVIS_MODEL` to use a different Claude model
+(default: `claude-opus-5-5`). Each command is one API request, which is billed to your Anthropic account.
+
 ## 📌Voice Commands
+
+These keyword commands always work, with or without an API key:
 
 | Say… | Jarvis will… |
 |------|--------------|
