@@ -23,9 +23,29 @@ It can do a lot of cool things, some of them being:
 - Tells about any person (via Wikipedia)
 - Can search anything on Google
 - Plays music
-- Take important note in text file
+- Take important notes in a text file and read them back
 - Can take screenshot and save it with custom filename
 - Can tell jokes
+- Shut down / restart the computer (asks for confirmation first)
+- Falls back to keyboard input when no microphone is available
+- Works on Windows, macOS and Linux
+
+## 📌Voice Commands
+
+| Say… | Jarvis will… |
+|------|--------------|
+| "what's the **time**" / "what's the **date**" | Tell the current time or date |
+| "**wikipedia** Alan Turing" | Read a two-sentence Wikipedia summary |
+| "**search google for** python tutorials" | Open a Google search in your browser |
+| "**open youtube**" / "**open google**" | Open the website |
+| "**play music** [song name]" | Play a (matching) song from your `Music` folder |
+| "**remember that** I have a meeting at 10" | Save a note to `Jarvis/data.txt` |
+| "**do you remember** anything" | Read your saved notes back |
+| "take a **screenshot** [named my desk]" | Save a screenshot to your `Pictures` folder |
+| "tell me a **joke**" | Tell a programming joke |
+| "**change your name**" | Rename the assistant |
+| "**shutdown**" / "**restart**" | Power off / restart after you say "yes" |
+| "go **offline**" / "**exit**" | Stop the assistant |
 
 ## Requirements
 
@@ -40,7 +60,7 @@ Python 3.6+
    - Clone the forked repository to your local machine:
      ```bash
      git clone <URL>
-     cd Jarvis-Desktop-Voice-Assistant
+     cd JARVIS
      ```
 
 3.  **Create and Activate a Virtual Environment**
@@ -63,13 +83,17 @@ Python 3.6+
 
    - Install all the requirements given in **[requirements.txt](https://github.com/kishanrajput23/Jarvis-Desktop-Voice-Assistant/blob/main/requirements.txt)** by running the command `pip install -r requirements.txt`
 
-5. **Install PyAudio**  
-   - Follow the instructions given **[here](https://stackoverflow.com/questions/52283840/i-cant-install-pyaudio-on-windows-how-to-solve-error-microsoft-visual-c-14)**
+5. **PyAudio troubleshooting** (needed for the microphone)
+   - PyAudio is included in `requirements.txt`. If it fails to install:
+     - Windows: see **[here](https://stackoverflow.com/questions/52283840/i-cant-install-pyaudio-on-windows-how-to-solve-error-microsoft-visual-c-14)**
+     - macOS: `brew install portaudio` then retry
+     - Linux: `sudo apt install portaudio19-dev` then retry
+   - Without a working microphone, Jarvis falls back to typed commands.
 
 6. **Run the Assistant**
   - Run the main script:
     ```bash
-    python jarvis.py
+    python Jarvis/jarvis.py
     ```
   - Now Enjoy with your own assistant !!!!
 
@@ -78,6 +102,14 @@ Python 3.6+
      ```bash
      deactivate
      ```
+
+## 📌Running Tests
+
+The tests mock the microphone, speech and GUI libraries, so they run anywhere:
+
+```bash
+python -m unittest discover -s tests
+```
 
 ## 📌Contributing
 
